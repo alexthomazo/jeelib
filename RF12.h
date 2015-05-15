@@ -7,6 +7,11 @@
 /// RFM12B driver definitions
 
 #include <stdint.h>
+#if ARDUINO >= 100
+#include <Arduino.h> // Arduino 1.0
+#else
+#include <WProgram.h> // Arduino 0022
+#endif
 
 /// RFM12B Protocol version.
 /// Version 1 did not include the group code in the crc.
@@ -62,6 +67,8 @@ extern volatile uint8_t rf12_buf[];
 /// Seq number of encrypted packet (or -1).
 extern long rf12_seq;
 
+extern boolean ITPlusFrame;         // if the received frame is an IT+ one ?
+
 /// Option to set RFM12 CS (or SS) pin for use on different hardware setups.
 /// Set to Dig10 by default for JeeNode. Can be Dig10, Dig9 or Dig8
 void rf12_set_cs(uint8_t pin);
@@ -71,6 +78,9 @@ void rf12_spiInit(void);
 
 /// Call this once with the node ID, frequency band, and optional group.
 uint8_t rf12_initialize(uint8_t id, uint8_t band, uint8_t group=0xD4, uint16_t frequency=1600);
+
+// override rf12 settings in order to receive IT+ packets
+void rf12_initialize_overide_ITP();
 
 /// Initialize the RFM12B module from settings stored in EEPROM by "RF12demo"
 /// don't call rf12_initialize() if you init the hardware with rf12_config().

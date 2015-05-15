@@ -13,6 +13,13 @@
 #include <WProgram.h> // Arduino 0022
 #endif
 
+//Bingo
+//
+//Set TX29_IT_PLUS to 1 compile La Crosse extensions in , else set TX29_IT_PLUS to 0
+//
+#define TX29_IT_PLUS 	1
+
+
 // #define OPTIMIZE_SPI 1  // uncomment this to write to the RFM12B @ 8 Mhz
 
 // pin change interrupts are currently only supported on ATmega328's
@@ -147,6 +154,11 @@ static uint8_t rf12_fixed_pkt_len;  // fixed packet length reception
 static uint32_t seqNum;             // encrypted send sequence number
 static uint32_t cryptKey[4];        // encryption key to use
 void (*crypter)(uint8_t);           // does en-/decryption (null if disabled)
+
+//Bingo
+#if TX29_IT_PLUS == 1
+boolean ITPlusFrame;
+#endif
 
 // function to set chip select pin from within sketch
 void rf12_set_cs (uint8_t pin) {
@@ -293,14 +305,51 @@ static void rf12_interrupt () {
     if (rxstate == TXRECV) {
         uint8_t in = rf12_xferSlow(RF_RX_FIFO_READ);
 
+//Bingo
+#if TX29_IT_PLUS == 1
+/* GCR */
+        // See http://forum.jeelabs.net/comment/4434#comment-4434 
+        // For an explanation , and limitation of this modification , to read the La Crosse TX29+ 868Mhz Sensors
+
+        // Check what type of frame it looks like with the first received byte
+        // Is it a TX29+ Frame ? (Always starts with 0x9? , on group 0xD4)
+        if (rxfill == 0 && group == 0xd4) {
+        	if ((in & 0xf0) == 0x90)
+        		ITPlusFrame = true;
+        	else
+        		ITPlusFrame = false;
+        }
+/* GCR */
+#endif
+
+//Bingo
+#if TX29_IT_PLUS == 1
+	if (rxfill == 0 && group != 0 && !ITPlusFrame) /* GCR : added  && !ITPlusFrame */
+#else
         if (rxfill == 0 && group != 0)
+#endif
             rf12_buf[rxfill++] = group;
             
         rf12_buf[rxfill++] = in;
+
+//Bingo
+#if TX29_IT_PLUS == 1        
+/* GCR */
+        if (ITPlusFrame) {
+        	if (rxfill == 5)	// IT+ Frames always has 5 bytes
+        		rf12_xfer(RF_IDLE_MODE);
+        		// CRC will be computed later
+/* GCR */
+        } else {
+#endif
         rf12_crc = _crc16_update(rf12_crc, in);
 
         if (rxfill >= rf12_len + 5 || rxfill >= RF_MAX)
             rf12_xfer(RF_IDLE_MODE);
+//Bingo
+#if TX29_IT_PLUS == 1    
+    } 
+#endif
     } else {
         uint8_t out;
 
@@ -388,6 +437,18 @@ static void rf12_recvStart () {
 ///      }
 /// @see http://jeelabs.org/2010/12/11/rf12-acknowledgements/
 uint8_t rf12_recvDone () {
+//Bingo
+#if TX29_IT_PLUS == 1
+/* GCR */
+	// Two different receive conditions depending on frame type RFM12/Jeenode or RFM01/IT+
+    if (ITPlusFrame) {
+    	if (rxstate == TXRECV && rxfill == 5) {	// IT+ Frames always has 5 bytes
+            rxstate = TXIDLE;
+            return 1;	// Got full IT+ frame
+        }
+/* GCR */
+    } else {	// RFM12/Jeenode normal processing
+#endif
     if (rxstate == TXRECV && (rxfill >= rf12_len + 5 || rxfill >= RF_MAX)) {
         rxstate = TXIDLE;
         if (rf12_len > RF12_MAXDATA)
@@ -401,6 +462,10 @@ uint8_t rf12_recvDone () {
             return 1; // it's a broadcast packet or it's addressed to this node
         }
     }
+//Bingo
+#if TX29_IT_PLUS == 1
+    }
+#endif
     if (rxstate == TXIDLE)
         rf12_recvStart();
     return 0;
@@ -621,6 +686,17 @@ uint8_t rf12_initialize (uint8_t id, uint8_t band, uint8_t g, uint16_t f) {
     
     return nodeid;
 }
+
+//Bingo
+#if TX29_IT_PLUS == 1
+/* GCR : RF12 overide settings for IT+ */
+void rf12_initialize_overide_ITP () {
+    rf12_xfer(0xA67c); // FREQUENCY 868.300MHz
+    rf12_xfer(0xC613); // DATA RATE 17.241 kbps
+    rf12_xfer(0x94a0); // RECEIVER CONTROL VDI Medium 134khz LNA max DRRSI 103 dbm
+}
+/* GCR */
+#endif
 
 /// @details
 /// This can be used to send out slow bit-by-bit On Off Keying signals to other
